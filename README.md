@@ -377,6 +377,8 @@ Moving On..
 
 This will configure and deploy services to your cluster, in addition to deploying Ethereum-Go to your worker nodes!
 
+![](https://github.com/coleman-word/atomic-devops/blob/master/images/geth.png)
+
 ## COMING SOON
 
 Ansible Playbooks to deploy Ethereum-Go containers on Kubernetes with:
