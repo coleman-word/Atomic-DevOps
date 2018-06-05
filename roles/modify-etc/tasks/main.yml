@@ -1,0 +1,30 @@
+---
+# vim: set ft=ansible:
+#
+- name: Fail if g_hostname is not defined
+  when: g_hostname is undefined
+  fail:
+    msg: "g_hostname is not defined"
+
+- name: Add entry to /etc/hosts
+  lineinfile:
+    dest: /etc/hosts
+    insertafter: EOF
+    line: "{{ ansible_default_ipv4.address }} {{ g_hostname }}"
+    state: present
+
+- name: Copy EPEL repo into /etc/yum.repos.d
+  copy:
+    src: epel.repo
+    dest: /etc/yum.repos.d/epel.repo
+    owner: root
+    group: root
+    mode: 0644
+
+- name: Copy EPEL GPG Key into /etc/pki/rpm-gpg
+  copy:
+    src: RPM-GPG-KEY-EPEL-7
+    dest: /etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-7
+    owner: root
+    group: root
+    mode: 0644

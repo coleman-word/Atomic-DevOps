@@ -1,0 +1,52 @@
+— name: Install list of packages
+  apt: name={{item}} state=installed
+ with_items:
+ — htop
+ — ctop
+ — screen
+ — unzip
+ — curl
+ — sudo
+ — mtr
+ — bash-completion
+ — tree
+ — colordiff
+ — ntp
+ — bwm-ng
+ — docker-compose
+ — apt-transport-https
+- name: install docker
+  command: sudo apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D
+- name: add deb repo
+  command: sudo touch /etc/apt/sources.list.d/docker.list
+- lineinfile: dest="/etc/apt/sources.list.d/docker.list" line="{{item}}"
+  with_items:
+    - "deb https://apt.dockerproject.org/repo ubuntu-trusty main"
+- name: apt update
+  apt: update_cache=yes
+- apt: name=docker-engine state=present
+- name: add user mod
+  command: sudo usermod -aG docker {{remote_user}}
+- name: add user mod
+  command: sudo usermod -aG docker {{action_user}}
+ — name: apt update
+ command: sudo apt-get update 
+
+ — name: Download index.html
+ shell: sudo wget https://s3.amazonaws.com/packeramidemo/index.html
+
+ — name: Download Dockerfile
+ command: wget https://s3.amazonaws.com/packeramidemo/Dockerfile 
+
+ — name: Docker build image
+ command: sudo docker build -t “simple_worx:dockerfile” .
+ ignore_errors: yes
+
+ — name: Docker run even after restart
+ command: sudo docker run -dit — restart unless-stopped -p 80:80 simple_worx:dockerfile
+ ignore_errors: yes
+
+ — name: Docker running?
+ command: curl localhost:80
+ register: out
+ — debug: var=out.stdout_lines

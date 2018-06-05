@@ -1,0 +1,43 @@
+---
+# vim: set ft=ansible:
+#
+# NOTE: This role should only be used on RHEL systems
+#
+# We get the neccessary info to insert the 'unconfigured-state' field into the origin
+# file only when we need to.  Otherwise, we just use the sub-man command to remove
+# all the subscriptions.
+#
+- block:
+  - name: Get origin file
+    command: ostree admin --print-current-dir
+    register: origin_file
+  when:
+    - unconfigured_state is defined
+    - unconfigured_state
+
+# we've seen the remove command return 70 even though it was successful
+- name: Remove all subscriptions locally
+  command: subscription-manager remove --all
+  register: subman_remove
+  failed_when:
+    - subman_remove.rc != 0
+    - subman_remove.rc != 70
+  until: subman_remove|success
+  retries: 5
+  delay: 60
+
+- name: Unregister from remote service
+  command: subscription-manager unregister
+  register: result
+  until: result|success
+  retries: 5
+  delay: 60
+
+- name: Insert 'unconfigured-state' field
+  when:
+    - unconfigured_state is defined
+    - unconfigured_state
+  lineinfile:
+    dest: "{{ origin_file.stdout }}.origin"
+    line: 'unconfigured-state=This system is not registered to Red Hat Subscription Management. You can use subscription-manager to register.'
+    insertafter: EOF

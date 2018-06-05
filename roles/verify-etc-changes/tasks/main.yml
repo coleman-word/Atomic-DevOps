@@ -1,0 +1,39 @@
+---
+# vim: set ft=ansible:
+#
+- name: Fail if g_hostname is not defined
+  when: g_hostname is undefined
+  fail:
+    msg: "g_hostname is not defined"
+
+- name: Verify changes to /etc/hosts
+  command: grep "{{ ansible_default_ipv4.address }} {{ g_hostname }}" /etc/hosts
+
+- name: Verify EPEL repo is present in /etc/yum.repos.d
+  stat:
+    path: /etc/yum.repos.d/epel.repo
+  register: epel
+
+- name: Fail if the file is not owned by root
+  when: epel.stat.uid != 0
+  fail:
+    msg: |
+      The epel.repo file is not owned by root
+      Expected: UID = 0
+      Actual: UID = {{ epel.stat.uid }}
+
+- name: Fail if the group on the file is not root
+  when: epel.stat.gid != 0
+  fail:
+    msg: |
+      The epel.repo file does not have the right group
+      Expected: GID = 0
+      Actual: GID = {{ epel.stat.gid }}
+
+- name: Fail if the permssions on the file are not correct
+  when: epel.stat.mode != "0644"
+  fail:
+    msg: |
+      The epel.repo file does not have the right permissions
+      Expected: Permissions = 0644
+      Actual: Permissions = {{ epel.stat.mode }}

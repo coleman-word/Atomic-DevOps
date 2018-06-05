@@ -1,0 +1,5 @@
+ansible
+jinja2
+boto
+awscli
+terraform

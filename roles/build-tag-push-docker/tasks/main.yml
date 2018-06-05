@@ -1,0 +1,80 @@
+---
+#
+# This role creates the docker webserver and database images, then tags and
+# pushes the images to a private registry that is setup in another role.
+#
+# Two files containing the are copied to the device under test.  Each Dockerfile
+# is modified specifically to pull down its own base OS, mariadb package, and
+# apache package.
+#    mariadb_cont.tgz
+#    web_cont_2.tgz
+#
+
+# Need to handle the cases of building the docker containers for each variant
+  - name: Fail if g_osname is undefined
+    when: g_osname is undefined
+    fail:
+      msg: "g_osname is undefined"
+    run_once: true
+
+  - name: Fail if ansible_docker0.ipv4.address is not defined
+    when: ansible_docker0.ipv4.address is not defined
+    fail:
+      msg: "ansible_docker0.ipv4.address it not defined!"
+    run_once: true
+
+# Red Hat
+  - name: copy db and web directories
+    when: ansible_distribution == "RedHat"
+    synchronize:
+      src: roles/docker_build_tag_push/files/rhel7
+      dest: /tmp
+
+# Fedora
+  - name: copy db and web directories
+    when: ansible_distribution == "Fedora"
+    synchronize:
+      src: roles/docker_build_tag_push/files/fedora
+      dest: /tmp
+
+# CentOS
+  - name: copy db and web directories
+    when: "'CentOS' in ansible_distribution"
+    synchronize:
+      src: roles/docker_build_tag_push/files/centos
+      dest: /tmp
+
+# Common build, tag, push
+  - name: build db docker image
+    command: docker build -t {{ ansible_docker0.ipv4.address}}:5000/dbforweb:latest /tmp/{{ g_osname }}/db
+
+  - name: verify tag
+    command: docker images
+    register: images
+    failed_when: "'{{ ansible_docker0.ipv4.address }}:5000/dbforweb' not in images.stdout"
+
+  - name: push db to private registry
+    command: docker push {{ ansible_docker0.ipv4.address }}:5000/dbforweb:latest
+
+  - name: delete tagged dbforweb image
+    command: docker rmi -f {{ ansible_docker0.ipv4.address }}:5000/dbforweb
+
+  - name: change IP address in action file before building
+    replace:
+      dest=/tmp/{{ g_osname }}/web/action
+      regexp='172.17.42.1'
+      replace={{ ansible_docker0.ipv4.address }}
+
+  - name: build web docker image
+    command: docker build -t {{ ansible_docker0.ipv4.address }}:5000/webwithdb:latest /tmp/{{ g_osname }}/web
+
+  - name: Verify dbforweb tag
+    command: docker images
+    register: images
+    failed_when: "'{{ ansible_docker0.ipv4.address }}:5000/webwithdb' not in images.stdout"
+
+  - name: push web to private registry
+    command: docker push {{ ansible_docker0.ipv4.address }}:5000/webwithdb:latest
+
+  - name: delete tagged webwithdb image
+    command: docker rmi -f {{ ansible_docker0.ipv4.address }}:5000/webwithdb

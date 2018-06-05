@@ -1,0 +1,86 @@
+---
+# vim: set ft=ansible:
+#
+#  This role sets up and creates an insecure private registry on the localhost
+#  at port 5000.
+#
+  - name: Fail if ansible_docker0.ipv4.address is not defined
+    fail:
+      msg: "ansible_docker0.ipv4.address it not defined!"
+    when: ansible_docker0.ipv4.address is not defined
+    run_once: true
+
+#  This is workaround for
+#  https://github.com/CentOS/sig-atomic-buildscripts/issues/316
+  - name: Check for 'atomic-registries' package
+    command: rpm -q atomic-registries
+    register: ar
+    ignore_errors: true
+
+  - when: ar.rc == 1
+    block:
+      - name: Install 'atomic-registries'
+        command: rpm-ostree install atomic-registries
+
+      - import_role:
+          name: reboot
+# end workaround
+
+  - name: Check for /etc/containers/registries.conf
+    stat:
+      path: /etc/containers/registries.conf
+    register: reg
+
+  - name: Check for TOML formmated registries.conf
+    when: reg.stat.exists
+    command: grep registries.search /etc/containers/registries.conf
+    register: toml
+    ignore_errors: true
+
+  - name: Add toml registries
+    when: reg.stat.exists and toml.rc == 0
+    replace:
+      regexp: "\\[registries.insecure\\]\nregistries = \\[\\]"
+      replace: "[registries.insecure]\nregistries = ['{{ ansible_docker0.ipv4.address }}:5000']"
+      dest: /etc/containers/registries.conf
+
+  - name: Add registries
+    when: reg.stat.exists and toml.rc == 1
+    blockinfile:
+      dest: /etc/containers/registries.conf
+      block: |
+        insecure_registries:
+          - {{ ansible_docker0.ipv4.address }}:5000
+
+  - name: edit /etc/sysconfig/docker file to add private registry
+    when: reg.stat.exists == False
+    replace:
+      dest=/etc/sysconfig/docker
+      regexp="^ADD_REGISTRY='--add-registry registry.access.redhat.com'"
+      replace="ADD_REGISTRY='--add-registry {{ ansible_docker0.ipv4.address }}:5000 --add-registry registry.access.redhat.com'"
+
+  - name: edit /etc/sysconfig/docker file to enable insecure registry
+    when: reg.stat.exists == False
+    replace:
+      dest=/etc/sysconfig/docker
+      regexp='^# INSECURE_REGISTRY=\'--insecure-registry\s?\''
+      replace='INSECURE_REGISTRY=\'--insecure-registry {{ ansible_docker0.ipv4.address }}:5000\''
+
+  - name: stop docker + registries
+    service:
+      name: "{{ item }}"
+      state: stopped
+    with_items:
+      - registries
+      - docker
+
+  - name: start docker + registries
+    service:
+      name: "{{ item }}"
+      state: started
+    with_items:
+      - registries
+      - docker
+
+  - name: create private registry
+    command: docker run -d -p 5000:5000 --restart=always --name registry registry:2

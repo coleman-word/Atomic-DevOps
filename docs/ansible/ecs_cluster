@@ -1,0 +1,86 @@
+DOCUMENTATION = '''
+---
+module: ecs_cluster
+short_description: create or terminate ecs clusters
+notes:
+    - When deleting a cluster, the information returned is the state of the cluster prior to deletion.
+    - It will also wait for a cluster to have instances registered to it.
+description:
+    - Creates or terminates ecs clusters.
+version_added: "2.0"
+author: Mark Chance(@Java1Guy)
+requirements: [ boto3 ]
+options:
+    state:
+        description:
+            - The desired state of the cluster
+        required: true
+        choices: ['present', 'absent', 'has_instances']
+    name:
+        description:
+            - The cluster name
+        required: true
+    delay:
+        description:
+            - Number of seconds to wait
+        required: false
+    repeat:
+        description:
+            - The number of times to wait for the cluster to have an instance
+        required: false
+extends_documentation_fragment:
+    - aws
+    - ec2
+'''
+
+EXAMPLES = '''
+# Note: These examples do not set authentication details, see the AWS Guide for details.
+# Cluster creation
+- ecs_cluster:
+    name: default
+    state: present
+# Cluster deletion
+- ecs_cluster:
+    name: default
+    state: absent
+- name: Wait for register
+  ecs_cluster:
+    name: "{{ new_cluster }}"
+    state: has_instances
+    delay: 10
+    repeat: 10
+  register: task_output
+'''
+RETURN = '''
+activeServicesCount:
+    description: how many services are active in this cluster
+    returned: 0 if a new cluster
+    type: int
+clusterArn:
+    description: the ARN of the cluster just created
+    type: string
+    returned: 0 if a new cluster
+    sample: arn:aws:ecs:us-west-2:172139249013:cluster/test-cluster-mfshcdok
+clusterName:
+    description: name of the cluster just created (should match the input argument)
+    type: string
+    returned: always
+    sample: test-cluster-mfshcdok
+pendingTasksCount:
+    description: how many tasks are waiting to run in this cluster
+    returned: 0 if a new cluster
+    type: int
+registeredContainerInstancesCount:
+    description: how many container instances are available in this cluster
+    returned: 0 if a new cluster
+    type: int
+runningTasksCount:
+    description: how many tasks are running in this cluster
+    returned: 0 if a new cluster
+    type: int
+status:
+    description: the status of the new cluster
+    returned: always
+    type: string
+    sample: ACTIVE
+'''

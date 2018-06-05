@@ -1,0 +1,54 @@
+---
+# vim: set ft=ansible:
+# role: rpm_ostree_uninstall_verify
+#
+# This role verifies that a package is uninstall after rpm-ostree uninstall
+#  by checking the package name is not in rpm-ostree status output and verifying
+#  that the binary not available using which
+#
+# Parameter:
+#   rouv_package_name - the name of a single package
+#   rouv_binary_name - the name of a binary (optional)
+#   rouv_status_check - boolean -check the rpm-ostree output for the package (optional)
+# Requirements:
+#  This role must be run after the reboot following rpm-ostree install of a package
+#
+# !!! WARNING!!!
+#   If you plan on using this role multiple times in a playbook, you should
+#   explicitly provide values for 'rouv_package_name' and 'rouv_binary_name'
+#   in order to avoid existing values in the playbook namespace to be reused
+#   across the roles.
+#
+- name: Fail if no packages specified
+  when: rouv_package_name is undefined
+  fail:
+    msg: "No packages specified"
+
+# The 'binary' fact can be set to something other than the package name
+# if needed
+- name: Setup binary fact
+  set_fact:
+    rouv_binary_name: "{{ rouv_binary_name if rouv_binary_name is defined else rouv_package_name }}"
+    rouv_status_check: "{{ rouv_status_check | default(true) }}"
+
+- import_role:
+    name: rpm_ostree_status
+
+# ros_booted is pulled from rpm_ostree_status role above
+- name: Fail if package is in rpm-ostree booted deployment
+  when: rouv_package_name in ros_booted['packages'] and
+        rouv_status_check
+  fail:
+    msg: |
+      Expected: {{ rouv_package_name }} is not booted deployment packages
+      Actual: Booted deployment packages: {{ ros_booted['packages'] }}
+
+- name: Fail if binary for {{ rouv_binary_name }} is installed
+  command: command -v {{ rouv_binary_name }}
+  register: binary
+  failed_when: binary.rc != 1
+
+- name: Fail if {{ rouv_package_name }} is in rpmdb
+  command: rpm -q {{ rouv_package_name }}
+  register: rpm
+  failed_when: rpm.rc != 1

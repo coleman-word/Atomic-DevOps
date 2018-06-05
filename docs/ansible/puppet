@@ -1,0 +1,76 @@
+DOCUMENTATION = '''
+---
+module: puppet
+short_description: Runs puppet
+description:
+  - Runs I(puppet) agent or apply in a reliable manner.
+version_added: "2.0"
+options:
+  timeout:
+    description:
+      - How long to wait for I(puppet) to finish.
+    default: 30m
+  puppetmaster:
+    description:
+      - The hostname of the puppetmaster to contact.
+  modulepath:
+    description:
+      - Path to an alternate location for puppet modules.
+    version_added: "2.4"
+  manifest:
+    description:
+      - Path to the manifest file to run puppet apply on.
+  facts:
+    description:
+      - A dict of values to pass in as persistent external facter facts.
+  facter_basename:
+    description:
+      - Basename of the facter output file.
+    default: ansible
+  environment:
+    description:
+      - Puppet environment to be used.
+  logdest:
+    description:
+      - Where the puppet logs should go, if puppet apply is being used.
+    choices: [ stdout, syslog ]
+    default: stdout
+    version_added: "2.1"
+  certname:
+    description:
+      - The name to use when handling certificates.
+    version_added: "2.1"
+  tags:
+    description:
+      - A comma-separated list of puppet tags to be used.
+    version_added: "2.1"
+  execute:
+    description:
+      - Execute a specific piece of Puppet code.
+      - It has no effect with a puppetmaster.
+    version_added: "2.1"
+requirements:
+- puppet
+author:
+- Monty Taylor (@emonty)
+'''
+
+EXAMPLES = '''
+- name: Run puppet agent and fail if anything goes wrong
+  puppet:
+- name: Run puppet and timeout in 5 minutes
+  puppet:
+    timeout: 5m
+- name: Run puppet using a different environment
+  puppet:
+    environment: testing
+- name: Run puppet using a specific certname
+  puppet:
+    certname: agent01.example.com
+- name: Run puppet using a specific piece of Puppet code. Has no effect with a puppetmaster
+  puppet:
+    execute: include ::mymodule
+- name: Run puppet using a specific tags
+  puppet:
+    tags: update,nginx
+'''

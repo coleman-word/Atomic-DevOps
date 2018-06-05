@@ -1,0 +1,11 @@
+---
+# vim: set ft=ansible:
+#
+# Dumb role to verify that hosts under tests are actually Atomic Hosts
+#
+# Depends on 'set_is_atomic' role
+#
+- name: Fail if system is not an Atomic Host
+  when: not g_is_atomic
+  fail:
+    msg: "The system is not an Atomic Host"

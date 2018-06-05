@@ -1,0 +1,17 @@
+---
+# vim: set ft=ansible:
+#
+#  This role installs a system container through the atomic install --system
+#    command
+#
+- name: Fail if asi_image is undefined
+  when: asi_image is undefined
+  fail:
+    msg: "asi_image is undefined"
+
+- name: Install system container
+  command: "atomic install --system {{ asi_image }}"
+  register: ais
+  retries: 5
+  delay: 60
+  until: ais|success

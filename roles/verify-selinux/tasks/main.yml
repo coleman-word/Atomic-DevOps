@@ -1,0 +1,178 @@
+---
+# vim: set ft=ansible:
+#
+# This role can be used to verify that various SELinux file labels and process
+# labels are correct on a system under test.  The role will check a set of
+# files/processes that are common to all the Atomic Host platforms, as well as
+# files/processes that may be unique to each distribution.
+#
+# Additionally, the role verifies that no files on the host have either the
+# 'unlabeled_t' or 'default_t' label.
+#
+# If any "bad" labels are found on the host, the various failures will be
+# recorded to a file named 'failed_selinux_verify.txt' where a higher-order
+# system can consume it and make any pass/fail judgements or what not.
+#
+# If there is a known problem in some of the SELinux labels on the host, you
+# can use following tags to exclude parts of the role from running (the tags
+# should be self-describing):
+#  - common_selinux_file_labels
+#  - distro_selinux_file_labels
+#  - common_selinux_proc_labels
+#  - distro_selinux_proc_labels
+#  - default_file_label
+#  - unlabeled_file_label
+#
+- name: Include common vars
+  include_vars: common.yml
+
+- name: Include distribution specific vars
+  include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ ansible_distribution|lower }}-{{ ansible_distribution_version }}.yml"
+    - "{{ ansible_distribution|lower }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_distribution|lower }}.yml"
+
+- name: Fail if required variables are not defined
+  when: mountpoints is undefined or
+        common_files is undefined or
+        common_procs is undefined or
+        distro_files is undefined or
+        distro_procs is undefined
+  fail:
+    msg: "The required variables are not defined.  Check files under roles/selinux_verify/vars/"
+
+- name: Check if getfattr installed
+  stat:
+    path: /usr/bin/getfattr
+  register: getfattr
+
+- name: Fail if getfattr not installed
+  when: getfattr.stat.exists == False
+  fail:
+    msg: "The getfattr utility is not installed"
+
+# Rather than use the more complicated 'with_subelements' approach, it is
+# possible to just use a list of key,value pairs and iterate over them.
+- name: Retrieve the common SELinux file labels
+  command: getfattr -n security.selinux {{ item.key }} --absolute-names --only-values
+  register: common_selinux_file_labels
+  with_items: "{{ common_files }}"
+  tags:
+    - common_selinux_file_labels
+
+# The verification is slightly hacky.  The state of the previous play is
+# registered in a variable; in this case 'common_selinux_file_labels'.
+# That variable has a key in it called 'results' which contains the details
+# of each time the 'command' was executed.  In each of those details there
+# is another key named 'item' which contains the 'key' and 'value' from
+# each item in 'common_files'.  We can compare the 'value' to the stdout
+# and see if the label was correct.  If the values don't compare correctly,
+# we can append them to a list of failed values to be read out later.
+#
+# This approach can be used for all other inspections of file labels or
+# process labels.
+
+- name: Append failed common file labels to the list
+  when: item.item.value not in item.stdout
+  set_fact:
+    sv_failed_file_labels: |
+      {{ sv_failed_file_labels|default([]) +
+      [ item.item.key + ': ' + item.stdout + ' (expected: ' + item.item.value + ')' ] }}
+  with_items: "{{ common_selinux_file_labels.results }}"
+  tags:
+    - common_selinux_file_labels
+
+- name: Retrieve the distribution specific SELinux file labels
+  command: getfattr -n security.selinux {{ item.key }} --absolute-names --only-values
+  register: distro_selinux_file_labels
+  with_items: "{{ distro_files }}"
+  tags:
+    - distro_selinux_file_labels
+
+- name: Append failed distro file labels to the list
+  when: item.item.value not in item.stdout
+  set_fact:
+    sv_failed_file_labels: |
+      {{ sv_failed_file_labels|default([]) +
+      [ item.item.key + ': ' + item.stdout + ' (expected: ' + item.item.value + ')' ] }}
+  with_items: "{{ distro_selinux_file_labels.results }}"
+  tags:
+    - distro_selinux_file_labels
+
+- name: Run 'rpm-ostree status' to start daemon
+  command: rpm-ostree status
+
+- name: Retrieve common SELinux process labels
+  shell: ps --no-headers -o label -q $(systemctl show -p MainPID {{ item.key|quote }} | sed -e s,MainPID=,,)
+  register: common_selinux_proc_labels
+  with_items: "{{ common_procs }}"
+  tags:
+    - common_selinux_proc_labels
+
+- name: Append incorrect common SELinux process labels
+  when: item.item.value not in item.stdout
+  set_fact:
+    sv_failed_proc_labels: |
+      {{ sv_failed_proc_labels|default([]) +
+      [ item.item.key + ': ' + item.stdout + ' (expected: ' + item.item.value + ')' ] }}
+  with_items: "{{ common_selinux_proc_labels.results }}"
+  tags:
+    - common_selinux_proc_labels
+
+- name: Retrieve distribution specific SELinux process labels
+  shell: ps --no-headers -o label -q $(systemctl show -p MainPID {{ item.key|quote }} | sed -e s,MainPID=,,)
+  register: distro_selinux_proc_labels
+  with_items: "{{ distro_procs }}"
+  tags:
+    - distro_selinux_proc_labels
+
+- name: Append incorrect distro SELinux process labels
+  when: item.item.value not in item.stdout
+  set_fact:
+    sv_failed_proc_labels: |
+      {{ sv_failed_proc_labels|default([]) +
+      [ item.item.key + ': ' + item.stdout + ' (expected: ' + item.item.value + ')' ] }}
+  with_items: "{{ distro_selinux_proc_labels.results }}"
+  tags:
+    - distro_selinux_proc_labels
+
+- name: Look for files/dirs with 'default_t' label
+  command: find {{ item }} -context '*:default_t:*'
+  register: find_default_t
+  with_items: "{{ mountpoints }}"
+
+- name: Append files with 'default_t'
+  when: item.stdout|length > 0
+  set_fact:
+    sv_default_files: "{{ sv_default_files|default([]) + [ item.stdout ] }}"
+  with_items: "{{ find_default_t.results }}"
+  tags:
+    - default_file_label
+
+- name: Look for files/dir with 'unlabeled_t' label
+  command: find {{ item }} -context '*:unlabeled_t:*'
+  register: find_file_t
+  with_items: "{{ mountpoints }}"
+  tags:
+    - unlabeled_file_label
+
+- name: Append files with 'unlabeled_t'
+  when: item.stdout|length > 0
+  set_fact:
+    sv_unlabeled_files: "{{ sv_unlabeled_files|default([]) + [ item.stdout ] }}"
+  with_items: "{{ find_file_t.results }}"
+  tags:
+    - unlabeled_file_label
+
+# Rather than failing when we found an SELinux problem, we just write out the
+# problems to a file that can be read by a higher-order tool.
+- name: Write out file with any SELinux failures
+  when: sv_failed_file_labels is defined or
+        sv_failed_proc_labels is defined or
+        sv_default_files is defined or
+        sv_unlabeled_files is defined
+  local_action:
+    template src=selinux_verify.j2 dest="{{ playbook_dir }}/failed_selinux_verify.txt"
+  become: false
+

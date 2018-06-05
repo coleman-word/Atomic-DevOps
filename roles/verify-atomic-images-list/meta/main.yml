@@ -1,0 +1,7 @@
+---
+# vim: set ft=ansible:
+#
+dependencies:
+  - role: list-images
+
+allow_duplicates: true

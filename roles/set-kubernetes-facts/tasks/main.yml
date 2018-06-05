@@ -1,0 +1,54 @@
+---
+# vim: set ft=ansible:
+#
+# This role sets up some facts related kubernetes that can be used by other
+# roles as a dependency.  The initial target is the `kubernetes_setup` role.
+#
+- name: Get kubernetes version
+  import_role:
+    name: check-rpm-version
+  vars:
+    rv_rpms: kubernetes-node
+
+- name: Define kube 1.5 vars
+  when:
+    - g_atomic_host is defined
+    - g_atomic_host['kubernetes-node'] is defined
+    - g_atomic_host['kubernetes-node'] | version_compare('1.6', '<')
+  set_fact:
+    kube_maj_ver: "1.5"
+    kube_apiserver: "registry.access.redhat.com/rhel7/kubernetes-apiserver"
+    kube_controller_manager: "registry.access.redhat.com/rhel7/kubernetes-controller-mgr"
+    kube_scheduler: "registry.access.redhat.com/rhel7/kubernetes-scheduler"
+    kube_system_containers: false
+    kubectl_path: "/usr/bin/kubectl"
+
+- name: Define kube 1.6 images
+  when:
+    - g_atomic_host is defined
+    - g_atomic_host['kubernetes-node'] is defined
+    - g_atomic_host['kubernetes-node'] | version_compare('1.6', '>=')
+  set_fact:
+    kube_maj_ver: "1.6"
+    kube_apiserver: "registry.fedoraproject.org/f26/kubernetes-apiserver"
+    kube_controller_manager: "registry.fedoraproject.org/f26/kubernetes-controller-manager"
+    kube_scheduler: "registry.fedoraproject.org/f26/kubernetes-scheduler"
+    kube_system_containers: false
+    kubectl_path: "/usr/bin/kubectl"
+
+- name: Define kube 1.9 master nodes, worker nodes and etcd images
+  when: (ansible_distribution == "Fedora" and ansible_distribution_major_version > '26') or
+        (ansible_distribution == "CentOSDev") or
+        (g_atomic_host is not defined) or
+        (g_atomic_host['kubernetes-node'] is not defined)
+  set_fact:
+    kube_maj_ver: "1.9"
+    kube_apiserver: "registry.fedoraproject.org/f27/kubernetes-apiserver"
+    kube_controller_manager: "registry.fedoraproject.org/f27/kubernetes-controller-manager"
+    kube_scheduler: "registry.fedoraproject.org/f27/kubernetes-scheduler"
+    kube_kubelet: "registry.fedoraproject.org/f27/kubernetes-kubelet"
+    kube_proxy: "registry.fedoraproject.org/f27/kubernetes-proxy"
+    etcd: "registry.fedoraproject.org/f27/etcd"
+    kube_system_containers: true
+    kubeconfig_path: "/etc/kubernetes/kubelet.kubeconfig"
+    kubectl_path: "/usr/local/bin/kubectl"

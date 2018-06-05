@@ -1,0 +1,48 @@
+---
+# vim: set ft=ansible:
+#
+# This role will rebase to another deployment.  It (should) support
+# the many variations of how the rebase command can be used.
+#
+# rpm-ostree rebase
+#   params:
+#     ror_refspec (required) - remote refspec
+#     ror_commit (optional) - rebase to this commit
+#     ror_remote_name (optional) - name for remote
+#     ror_remote_url (optional) - remote url will trigger adding of remote
+#
+- name: Fail if refspec is not defined
+  when: ror_refspec is undefined
+  fail:
+    msg: "ror_refspec is not defined"
+
+# Default to empty strings for everything but the refspec
+- name: Setup facts and assign defaults if needed
+  set_fact:
+    rorl_commit: "{{ ror_commit | default('') }}"
+    rorl_refspec: "{{ ror_refspec }}"
+    rorl_remote_name: "{{ ror_remote_name | default('') }}"
+    rorl_remote_url : "{{ ror_remote_url | default('') }}"
+
+- name: Add the remote
+  when:
+    - rorl_remote_name != ''
+    - rorl_remote_url != ''
+  command: ostree remote add --if-not-exists --no-gpg-verify {{ rorl_remote_name }} {{ rorl_remote_url }}
+
+# Since we default to empty strings for everything but the refspec, we can
+# supply all the arguments to the 'rpm-ostree rebase' command and cover
+# all the necessary permutations.
+#
+# For example:
+#  - remote supplied & no commit supplied -> 'rpm-ostree rebase remote:refspec'
+#  - remote & commit supplied -> 'rpm-ostree rebase remote:refspec commit'
+#  - remote & commit not supplied -> 'rpm-ostree rebase :refspec'
+#  - remote not supplied & commit supplied -> 'rpm-ostree rebase :refspec commit'
+#
+- name: Rebase to new deployment
+  command: rpm-ostree rebase {{ rorl_remote_name }}:{{ rorl_refspec }} {{ rorl_commit }}
+  register: rebase
+  retries: 5
+  delay: 60
+  until: rebase|success

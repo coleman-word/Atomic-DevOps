@@ -1,0 +1,38 @@
+---
+#
+#  Disables docker live-restore
+#
+
+# Handle live-restore in daemon.json file
+- name: Determine if /etc/docker/daemon.json exists
+  stat:
+    path: /etc/docker/daemon.json
+  register: daemon_file
+
+- name: Turn off live restore
+  when: daemon_file.stat.exists
+  replace:
+    dest: /etc/docker/daemon.json
+    regexp: 'true'
+    replace: 'false'
+
+# Handle live-restore in /etc/sysconfig/docker file
+- name: Get contents of /etc/syconfig/docker
+  command: cat /etc/sysconfig/docker
+  register: esd
+
+- name: Remove --live-restore option if it exists
+  when: "'--live-restore' in esd.stdout"
+  replace:
+    dest: /etc/sysconfig/docker
+    regexp: '\s*--live-restore'
+    replace: ''
+
+- name: Restart docker service
+  when: daemon_file.stat.exists or
+        "'--live-restore' in esd.stdout"
+  service:
+    name: docker
+    state: restarted
+
+

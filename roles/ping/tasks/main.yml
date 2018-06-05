@@ -1,0 +1,8 @@
+---
+- hosts: master
+  gather_facts: False
+  remote_user: fedora
+
+  tasks:
+    - name: ping
+      ping:

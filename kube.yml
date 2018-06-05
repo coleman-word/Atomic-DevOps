@@ -1,0 +1,11 @@
+---
+- hosts: kube-master
+  become: yes
+  roles:
+          - set-kubernetes-facts
+          - kubernetes_setup
+
+- hosts: kube-node
+  become: yes
+  roles:
+          - gothereum 

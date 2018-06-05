@@ -1,0 +1,51 @@
+Building Images
+Simple Build
+For building docker images, we must first have the docker daemon installed and running:
+
+#> dnf install -y docker
+#> systemctl start docker
+Then we can download an image that we’ll use as a base of our image. Let’s use something we trust, for example Red Hat Enterprise Linux 7:
+
+#> docker pull rhel7
+Then, one way to create an image, is to simply layer your content on top of the running container. Run the container, make your changes and use docker commit to "commit" your changes:
+
+#> docker run -ti --name mycont rhel7 bash
+[root@a1eefecdacfa /]# echo Hello Dojo > /root/greeting
+[root@a1eefecdacfa /]# exit
+#> docker commit mycont
+0bdcfc5ba0602197e2ac4609b8101dc8eaa0d8ab114f542ab6b2f15220d0ab22
+However, this approach is not easily reproducible and is not ideal for more complicated scenarios. To ensure the build can be reproduce, use the Dockerfile instead.
+
+The following example results in the same output as the example before, except we can repeat it as many times we want and always get the same output. It also helps understanding the Docker itself more as a packaging format, than just a virtualization technology:
+
+#> cat Dockerfile
+FROM rhel7
+RUN echo Hello Dojo > /root/greeting
+
+#> docker build .
+Build Environment
+A build environment should have the following characteristics
+
+is secure by limiting direct access to the build environment
+
+limits access to configure and trigger builds
+
+limits access to build sources
+
+limits access to base images, those images referenced in the FROM line of a Dockerfile
+
+provides access to build logs
+
+provides some type of a pipeline or workflow, integrating with external services to trigger builds, report results, etc.
+
+provides a way to test built images
+
+provides a way to reproduce builds
+
+provides a secure registry to store builds
+
+provides a mechanism to promote tested builds
+
+shares the same kernel as the target production runtime environment
+
+A build environment that meets these requirements is difficult to create from scratch. An automation engine like Jenkins is essential to managing a complex pipeline. While a virtual machine-based solution could be created, it is recommended that a dedicated, purpose-built platform such as OpenShift be used.

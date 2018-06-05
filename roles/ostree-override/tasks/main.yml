@@ -1,0 +1,23 @@
+---
+# vim: set ft=ansible:
+#
+# rpm-ostree override 
+#
+# params:
+#   roo_packages [string]: rpm file path delimited by space
+#     to replace or rpm name (depending on subcommand)
+#   roo_subcommand [string]: subcommand, can be one of
+#     - replace
+#     - reset
+#     - remove
+#
+
+- name: Fail if roo_packages or roo_subcommand is not specified
+  when: roo_packages is undefined or
+        roo_subcommand is undefined
+  fail:
+    msg: 'roo_packages or roo_subcommand is not defined'
+
+- name: Override {{ roo_subcommand }} {{ roo_packages }}
+  command: rpm-ostree override {{ roo_subcommand }} {{ roo_packages }}
+  register: roo

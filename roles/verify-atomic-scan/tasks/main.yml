@@ -1,0 +1,63 @@
+---
+# vim: set ft=ansible:
+#
+#   This role verifies the atomic scan command.  It validates the command by
+#   checking the output of the command and looking for the log file generated
+#   by the scan command.
+#
+#   Commands:
+#   - atomic install
+#   - atomic scan
+#
+- name: Set scanner image (RHEL)
+  set_fact:
+    scanner_image: "registry.access.redhat.com/rhel7/openscap"
+    scanner_type: "openscap"
+
+- name: Set scanner target
+  set_fact:
+    scanner_target: "registry.access.redhat.com/rhel7"
+
+- name: Install openscap
+  command: atomic install {{ scanner_image }}
+  register: result
+  retries: 5
+  delay: 60
+  until: result|success
+
+- name: Check installation of openscap
+  when: "'Installation complete' not in result.stdout"
+  fail:
+    msg: "Atomic install was unsuccessful"
+
+  # Use 'docker pull' for now; maybe switch to 'atomic pull' once all the
+  # streams have support for v1 schema manifests
+- name: Pull scanner target
+  command: docker pull {{ scanner_target }}
+  register: dps
+  retries: 5
+  delay: 60
+  until: dps|success
+
+- name: Run atomic scan
+  command: atomic --debug scan --scanner {{ scanner_type }} {{ scanner_target }}
+  register: atomic_output
+
+- name: Catch atomic scan failures
+  when: "'Files associated' not in atomic_output.stdout"
+  fail:
+    msg: "Atomic scan failed"
+
+- name: Get scanner result directory
+  shell: echo {{ atomic_output.stdout | quote }} | awk '/^Files associated/{print $8}' | sed "s/\.[\']*//"
+  register: dir
+
+- name: Verify scanner result directory exists
+  stat:
+    path={{ dir.stdout }}
+  register: scan_dir
+
+- name: Fail if result directory does not exist
+  when: scan_dir.stat.exists == False
+  fail:
+    msg: "Scanner result directory does not exist."

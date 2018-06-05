@@ -1,0 +1,7 @@
+---
+# vim: set ft=ansible:
+#
+dependencies:
+  - role: list-containers
+
+allow_duplicates: true

@@ -1,0 +1,53 @@
+---
+# vim: set ft=ansible:
+#
+# Role: epel_rpm_url
+#
+# Scrapes the html on EPEL for the package name since the name changes with
+#  the version.  This should be used after system unlocks using ostree admin
+#  unlock or ostree admin unlock --hotfix.
+#
+# Parameters:
+#  rpm_name - short name of the rpm file name
+#
+# Returns:
+#  epel_rpm_url - url for the current version of the rpm_name in EPEL
+#
+
+- name: Fail if rpm_name
+  when: rpm_name is undefined
+  fail:
+    msg: "rpm_name must be passed into this role/include"
+
+# Sorry download.fedoraproject.org, but you were giving me more trouble than
+# I would have liked, so dl.fedporaproject.org wins out.
+- name: Set EPEL base url and regex
+  set_fact:
+    epel_base: "https://dl.fedoraproject.org/pub/epel/7/x86_64/Packages"
+    epel_regex: ".*>({{ rpm_name }}.*rpm)<.*"
+
+- name: Get subdir url
+  set_fact:
+    epel_subdir: "{{ epel_base }}/{{ rpm_name[0] }}"
+
+# Split the task of gathering the package name into two operations, that way
+# if the 'curl' operation fails (i.e HTTP 404 or other network flakes) we can
+# abort early and not fail further down a test.
+
+# 'no_log: true' is used here to hide the output from 'curl' which is the
+# entire directory listing
+- name: Grab content of the EPEL subdir
+  command: curl -LsSk {{ epel_subdir }}
+  register: curl_out
+  retries: 5
+  delay: 60
+  until: curl_out|success
+  no_log: true
+
+- name: Get package name from output
+  set_fact:
+    epel_package_name:  "{{ curl_out.stdout | regex_findall(epel_regex) }}"
+
+- name: Set epel_rpm_url
+  set_fact:
+    epel_rpm_url: "{{ epel_subdir}}/{{ epel_package_name[0] }}"

@@ -1,0 +1,29 @@
+---
+# vim: set ft=ansible:
+#
+# rpm_nevra
+#   gets nevra tuple for a package
+#
+# params:
+#   rn_package: rpm file path or rpm name
+#
+
+- name: Fail if rn_package is not defined
+  when: rn_package is undefined
+  fail:
+    msg: 'rn_package is not defined'
+
+- name: Set fact for installed package vs non-installed package
+  set_fact:
+    rn_rpm_option: "{{ '-p' if '.rpm' in rn_package else '' }}"
+
+- name: Get NEVRA for {{ rn_package }}
+  command: >
+    rpm -q {{ rn_rpm_option}} --nosignature
+    --queryformat '%{NEVRA}\n%{N}\n%{E}\n%{V}\n%{R}\n%{ARCH}\n'
+    {{ rn_package }}
+  register: rn_rpm_output
+
+- name: Set NEVRA fact
+  set_fact:
+    rn_nevra: '{{ rn_rpm_output.stdout_lines }}'

@@ -1,0 +1,29 @@
+---
+# vim: set ft=ansible:
+#
+# rpm_nevra
+#   compares two nevra tuples
+#
+# params:
+#   rnc_tuple1: first nevra tuple
+#   rnc_tuple2: second nevra tuple
+#
+
+- name: Fail if rnc_tuple1 or runc_tuple2  is not defined
+  when: rnc_tuple1 is undefined or rnc_tuple2 is undefined
+  fail:
+    msg: 'rnc_tuple1 or rnc_tuple2 is undefined'
+
+- name: Convert (none) to 0
+  set_fact:
+    rnc_tuple1_p: "{{ rnc_tuple1 | map('regex_replace', '\\(none\\)', '0') | list }}"
+    rnc_tuple2_p: "{{ rnc_tuple2 | map('regex_replace', '\\(none\\)', '0') | list }}"
+
+- name: Fail if NEVRA tuples do not match
+  when: rnc_tuple1_p != rnc_tuple2_p
+  fail:
+    msg: |
+      Expected: NEVRA tuples match
+      Actual:
+        {{ rnc_tuple1_p }}
+        {{ rnc_tuple2_p }}

@@ -1,0 +1,397 @@
+Creating Images
+The base unit of creating an image is the Dockerfile itself. This section focuses on the instructions that make up a Dockerfile.
+
+This chapter will not cover every Dockerfile instruction available but instead will focus on specific ones that we want to re-enforce to those who develop Dockerfiles. Docker has published a reference guide already covering each of the Dockerfile instructions. In addition, upstream docker has a nice description of best practices for Dockerfiles. It describes the various instructions that can be used to compose a Dockerfile and their best usage. Familiarize yourself with these recommendations.
+
+Creating Base Images
+Choosing Base Image
+Images that have no parent are called base images. Docker images usually have their own root filesystem with an operating system installed. So when you want to create a new image, it either has to be based on an image that actually provides an operating system or you will need to create this layer in your image. The only difference to this are super minimal images that instead of an operating system provide only a single binary as described later in the text. There is a wide variety of base images already available on Docker Hub, so the simplest solution is to use one from there. Here are a few things that should help you determine which base image will fit your needs:
+
+Linux distribution - Your personal preference and experience will play an important role in choosing one distribution over another. However, you should consider whether your containerized application requires specific libraries or tools from a specific system.
+
+Image size - Base images usually contain a minimal operating system with a set of tools needed for basic operations. To preserve your environment small and efficient, size should also be taken into account when picking the right base image. The size varies; you can take advantage of super small base images, such as 2MB busybox, or use a standard minimal operating system, such as Fedora or CentOS that are up to 200MB in size.
+
+Updates - Not all community images are necessarily rebuilt on a regular basis or when security vulnerabilities are addressed. You should therefore consider using base images from "official repositories" on Docker Hub, and confirm their update policy in advance.
+
+Creating Base Image
+Once you’ve considered all options and decided to create your own base image, the process will mostly depend on the distribution you chose. Note that the major distributions have their source files available on GitHub so you still might want to consider creating an issue or opening a pull request to suggest a change in the feature set or any adjustment. Docker documentation suggests two approaches to creating a base image: using tar and building an image "FROM scratch".
+
+Using tar
+Using the tar tool is a simple way how to build a base image. As a prerequisite, you will need to set up a directory structure for chroot with all items that you wish to be part of the base image. There are various tools that might help you with this, for example debootstrap for Debian systems or supermin for RPM-based systems.
+
+Once you have your chroot directory ready, it is as simple as running:
+
+# tar -C <chroot_dir> -c . | docker import - <new_image_name>
+Note that docker provides a set of scripts for base image creation that take advantage of tar: https://github.com/docker/docker/tree/master/contrib. Popular distributions then use their own build systems that usually also utilizes tar. For example Fedora’s koji.
+
+FROM scratch
+"scratch" is a special repository in the Docker Hub registry, created using an empty tarball. It is not meant to be pulled or run, and at any such an attempt you will most likely encounter this message: 'scratch' is a reserved name. Using scratch is ideal for creating extremely minimal images, for example for containerizing single binaries. An example is available from Docker documentation. scratch is also very handy for creating standard distribution base images. But as with tar, you’ll first need to prepare a directory structure for chroot. After that, just add the directory in your Dockerfile as follows:
+
+FROM scratch
+ADD <chroot_dir> /
+CMD ["/bin/bash"]
+Creating System Images
+The need for a container service to be started promptly before the Docker service starts supplies the requirements of a system container. The Open-vm-tools container is a system container utilizing runc as the runtime engine.
+
+A system container normally starts as a regular Docker container:
+
+FROM rhel7:7.4-ondeck
+
+LABEL summary="The open-vm-tools guest agent" \
+      io.k8s.description="The open-vm-tools agent is providing information about the virtual machine and allows to restart / shutdown the machine via VMware products. This image is intended to be used with virtual machines running Red Hat Enterprise Linux Atomic Host." \
+      name="rhel/open-vm-tools" \
+      version="7.4" \
+      com.redhat.component="open-vm-tools-docker" \
+      maintainer="davis phillips <dphillip@redhat.com>"
+
+ENV SYSTEMD_IGNORE_CHROOT=1
+
+RUN yum-config-manager --enable rhel-7-server-rpms || :
+RUN yum -y --setopt=tsflags=nodocs install file open-vm-tools perl net-tools iproute systemd
+RUN yum clean all
+
+COPY tmpfiles.template service.template config.json.template /exports/
+COPY init.sh /usr/bin/
+
+LABEL run="docker run  --privileged -v /proc/:/hostproc/ -v /sys/fs/cgroup:/sys/fs/cgroup  -v /var/log:/var/log -v /run/systemd:/run/systemd -v /sysroot:/sysroot -v=/var/lib/sss/pipes/:/var/lib/sss/pipes/:rw -v /etc/passwd:/etc/passwd -v /etc/shadow:/etc/shadow -v /tmp:/tmp:rw -v /etc/sysconfig:/etc/sysconfig:rw -v /etc/resolv.conf:/etc/resolv.conf:rw -v /etc/nsswitch.conf:/etc/nsswitch.conf:rw -v /etc/hosts:/etc/hosts:rw -v /etc/hostname:/etc/hostname:rw -v /etc/localtime:/etc/localtime:rw -v /etc/adjtime:/etc/adjtime --env container=docker --net=host  --pid=host IMAGE"
+
+CMD /usr/bin/vmtoolsd
+Note, the following line:
+
+COPY tmpfiles.template service.template config.json.template /exports/
+This line sets up to stage the systems container. The important components for this are service.template and config.json.template. The service.template is the systemd unit template for when the systems container is installed via atomic install.
+
+[Unit]
+Description=Service for virtual machines hosted on VMware
+Documentation=http://github.com/vmware/open-vm-tools
+ConditionVirtualization=vmware
+
+[Service]
+ExecStartPre=/bin/bash -c 'systemctl import-environment'
+ExecStartPre=/bin/bash -c 'export -p > /tmp/open-vm-tools-bash-env'
+ExecStart=$EXEC_START
+ExecStop=$EXEC_STOP
+WorkingDirectory=$DESTDIR
+
+[Install]
+WantedBy=multi-user.target
+The config.json.template is similar to the Docker run label or line. Below shows the environment variables, bind mounts and the command to execute "/usr/bin/init.sh"
+
+{
+    "ociVersion": "1.0.0",
+    "platform": {
+        "os": "linux",
+        "arch": "amd64"
+    },
+    "process": {
+        "terminal": false,
+        "user": {},
+        "args": [
+            "/usr/bin/init.sh"
+        ],
+        "env": [
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "TERM=xterm",
+            "NAME=open-vm-tools",
+            "SYSTEMD_IGNORE_CHROOT=1"
+        ],
+...
+omitted
+    "mounts": [
+            {
+            "destination": "/run/systemd",
+            "type": "bind",
+            "source": "/run/systemd",
+            "options": [
+                "rw",
+                "rbind",
+                "rprivate"
+            ]
+        },
+...
+omitted
+Often times, executing a single command via the container is not enough. The above command init.sh stages the container environment and ensures both VGAuthService and vmtoolsd is executed inside the container.
+
+#!/bin/sh
+source /tmp/open-vm-tools-bash-env
+
+COMMAND=/usr/local/bin/vmware-toolbox-cmd
+if [ ! -e $COMMAND ]
+  then
+    echo 'runc exec -t open-vm-tools vmware-toolbox-cmd "$@"' > /usr/local/bin/vmware-toolbox-cmd
+    chmod +x /usr/local/bin/vmware-toolbox-cmd
+fi
+exec /usr/bin/VGAuthService -s &
+exec /usr/bin/vmtoolsd
+Here are the commands to execute via the atomic CLI to install and convert a system container. Provided we have already built the open-vm-tools container from the Dockerfile listed above.
+
+atomic pull --storage=ostree docker:open-vm-tools
+atomic install --system open-vm-tools
+systemctl start open-vm-tools
+Similarly, we can pull this container from the Red Hat registry and install it in the same fashion.
+
+atomic pull --storage ostree registry.access.redhat.com/rhel7/open-vm-tools
+atomic install --system registry.access.redhat.com/rhel7/open-vm-tools
+systemctl start open-vm-tools
+The atomic install command installs the systemd unit file from the container from its /exports/ directory and sets the service to enable. The systemctl command below that starts the service immediately instead of awaiting a reboot.
+
+More examples of system containers can be found here. This includes the open-vm-tools example for CentOS.
+
+Small and Concise Images
+It is preferable to create small and concise images whenever possible. This can be highly dependent on the application you are containerizing, but there are techniques to help you accomplish this. The following sections cover these techniques.
+
+Chaining Commands
+In general, having fewer layers improves readability. Commands that are chained together become a part of the same layer. To reduce the number of layers, chain commands together. Find a balance, though, between a large number of layers (and a great many commands), and a small number of layers (and obscurity caused by brevity).
+
+A new layer is created for every new instruction defined. This does not necessarily mean that one instruction should be associated with only one command or definition.
+
+Ensure transparency and provide a good overview of the content of each layer by grouping related operations together so that they together constitute a single layer. Consider this snippet:
+
+RUN dnf install -y --setopt=tsflags=nodocs \
+    httpd vim && \
+    systemctl enable httpd && \
+    dnf clean all
+Each command that is related to the installation and configuration of httpd is grouped together as a part of the same layer. This meaningful grouping of operations keeps the number of layers low while keeping the easy legibility of the layers high.
+
+However, even this snippet can be improved. Can you spot which issues does it suffer from?
+
+Although most commands will span only one line, the dnf command spans two lines, so it is difficult to spot where it starts and where it ends.
+
+This can be mitigated by ensuring that every new command begins with && at the beginning. As of year 2018, the trend of breaking lines before the binary operator is slowly gaining ground, as PEP8 has recently adopted this policy.
+
+The first and last commands of the block are special.
+
+If you would like to prepend or append a one-line command to the block, you will have to edit two lines - one that you are adding and the first or last commands. The first command is on the same line as the RUN directive, whereas the last command lacks the trailing backslash.
+
+Editing a line with a command that that you don’t want to change presents a risk of introducing a bug, and you also obscure the line’s history. This can be mitigated by having both the first and last commands true - they don’t do anything.
+
+Therefore, an improved snipped would look like
+
+Chained Dockerfile instruction
+RUN true \
+    && dnf install -y --setopt=tsflags=nodocs \
+        httpd vim \
+    && systemctl enable httpd \
+    && dnf clean all \
+    && true
+Additional benefits include easy split and merge of multiple RUN sections. If such section installs build dependencies of a package, clones source code, configures it, compiles it and finally installs it, it may be a time-consuming operation. And if the compilation fails at a late stage due to bad configuration, you may want to quickly iterate between the configuration and compilation phase.
+
+Therefore, you will want to split the RUN section in two - the dependency installation and source clone in one layer, and the rest (starting with configuration) in another layer. If you adhere to the style proposed here, you will split a section by inserting two lines right before the configuration step. After you get the configuration right, you remove those lines without any hassle.
+
+Using Double Ampersands (&&) vs Semi-colons (;)
+In the RUN instruction of Dockerfiles, it is common to string together multiple commands for efficiency. Stringing commands together in the RUN instructions are typically done with ampersands or semi-colons. However, you should consider the implications of each and their usage. The following examples illustrate the difference between those two patterns known to shell programmers.
+
+Using semi-colons as instruction conjunctions
+RUN do_1; do_2
+This sort of conjunction will be evaluated into do_1 and then do_2. However, using the double ampersands results in a different evaluation.
+
+Using double ampersands as conjunctions
+RUN do_1 && do_2
+The ampersands change the resulting evaluation into do_1 and then do_2 only if do_1 was successful.
+
+The use of the double ampersands as conjunctions is a better practice in Dockerfiles because it ensures that your instructions are completed or the build will fail. If the build were to continue and you had not closely monitored the build (or its results), then the image may not be exactly as you desired. This is particularly true with automated build systems where you will want any failure to result in the failure of the build itself.
+
+There are certainly use cases where semi-colons might be preferred and possibly should be used. Nevertheless, the possible result of an incomplete image should be carefully considered.
+
+Clearing Packaging Caches and Temporary Package Downloads
+Package managers can typically generate lots of metadata and also store downloaded content into a cache of sorts. To keep images and layers as small as possible, you should consider clearing out these caches of downloaded content. Note how the following example ends with yum -y clean all which removes deletable yum content.
+
+A singular RUN instruction performing multiple commands
+RUN true \
+    && yum install -y epel-release \
+    && rpmkeys --import file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7 \
+    && yum install -y --setopt=tsflags=nodocs bind-utils gettext iproute\
+        v8314 mongodb24-mongodb mongodb24 \
+    && yum -y clean all \
+    && true
+There are several package managers beyond yum that should be of note: dnf, rvm, gems, cpan, pip. Most of these managers have some form of a clean-up command that will handle excess cache created while performing their package management duties.
+
+Below are examples pictured for dnf and rvm:
+
+dnf cleanup example
+RUN true \
+    &&  rpm -ivh https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm \
+    && dnf -y install nodejs tar sudo git-all memcached postgresql-devel postgresql-server \
+        libxml2-devel libxslt-devel patch gcc-c++ openssl-devel gnupg curl which \
+    && dnf clean all \
+    && true
+Ruby (rvm) cleanup example
+RUN true \
+    && /usr/bin/curl -sSL https://rvm.io/mpapis.asc | gpg2 --import - \
+    && /usr/bin/curl -sSL https://get.rvm.io | rvm_tar_command=tar bash -s stable \
+    && source /etc/profile.d/rvm.sh \
+    && echo "gem: --no-ri --no-rdoc --no-document" > ~/.gemrc \
+    && /bin/bash -l -c "rvm requirements && rvm install ruby 2.2.4 && rvm use 2.2.4 --default \
+    && gem install bundler rake \
+    && gem install nokogiri --use-system-libraries \
+    && rvm cleanup all && yum clean all && rvm disk-usage all" \
+    && true
+In the above example, notice the yum clean all command called after rvm; this is because some package managers like rvm rely on others (like yum in this case) to help perform their duties. Make sure to examine your container’s layers sizes to help determine where you can eliminate excess size and keep its footprint size to a minimum.
+
+Here is a listing of some package managers and the applicable cleanup commands:
+
+Table 1. Package Managers
+Package Manager
+
+Cleanup Command
+
+yum
+
+yum clean all
+
+dnf
+
+dnf clean all
+
+rvm
+
+rvm cleanup all
+
+gem
+
+gem cleanup
+
+cpan
+
+rm -rf ~/.cpan/{build,sources}/*
+
+pip
+
+rm -rf ~/.cache/pip/*
+
+apt-get
+
+apt-get clean
+
+Clearing Package Cache and Squashing
+If you squash your images after manual building or as part of an automated build process, it is not necessary to clean cache in every single relevant instruction/layer as the intermediate layers affect the previous ones in this case.
+
+Simple example Dockerfiles below would both produce the same image if they were squashed:
+
+Cache cleanup in a separate instruction
+FROM fedora
+RUN dnf install -y mariadb
+RUN dnf install -y wordpress
+RUN dnf clean all
+Cache cleanup chained with the install command
+FROM fedora
+RUN dnf install -y mariadb wordpress && dnf clean all
+However, without squashing, the first image would contain additional files and would be bigger than the second one:
+
+Size comparison
+# docker images
+REPOSITORY          TAG                 IMAGE ID            CREATED              VIRTUAL SIZE
+example             separate            54870d73715f        21 seconds ago       537.7 MB
+example             chained             6a6156547888        About a minute ago   377.9 MB
+Therefore, it is a good practice to write Dockerfiles in a way so that others can use it as a valid reference and are always able to reproduce the build. To ensure this, you should clean cache in every layer where applicable. In general, you should always aim to create images that are small and concise regardless of whether the final image is squashed or not.
+
+Read more about suqashing and its repercussions in the Squashing layers section.
+
+Removing Unnecessary Packages
+In some cases, your image can end up with several packages that are not necessary to support the runtime of your application. A good example is when you actually build your application from source during the build of the image itself. Typically, when you build an application, you will pull in development (-devel) packages as well as toolchain-based packages like make and gcc. Once your application is built, you may no longer need these packages for runtime depending on how your application links to libraries.
+
+Depending on your application and which packages you added to your image, you might need to iteratively attempt to remove packages checking to make sure your application still works. One suggestion would be to remove big parts of the toolchain. And then use your package manager’s command to clean up unused packages. In the case of dnf, you can remove unneeded packages like so:
+
+Removing unnecessary packages with dnf
+# dnf autoremove
+You should run this command in an interactive shell (docker run -it --rm <image> /bin/bash) initially so you can get a feel for which packages will be removed. One upside to doing so is that you can then test run your application from the interactive shell to make sure it still works.
+
+Removing Documentation
+Another technique for reducing the image size is by limiting the documentation being installed. If you package manager supports such a thing and you have no expectations for users to use a shell to interact with your image, this might significantly reduce the size of your image.
+
+Yum has an optional flag to not install documentation. The following example shows how to set the flag.
+
+RUN yum install -y mysql --setopt=tsflags=nodocs
+Note that the nodocs flag is used in some base images, for example CentOS and Fedora, and this setting gets inherited by the child layers. This can cause problems in case you decide to include the documentation in one of your layered images.
+
+In this case, if you wish to have the documentation installed for packages from your single layer only, you have to empty the tsflags option as follows:
+
+RUN yum -y install docker --setopt=tsflags=''
+If you wish to have the documentation installed for packages from your single layer and the parent layers, you need to reinstall the packages with the empty tsflags option as follow:
+
+RUN yum -y reinstall "*" --setopt-tsflags='' && yum install docker --setopt-tsflags=''
+In case you need to have documentation included for every package from every single parent or child layer, the /etc/yum.conf file needs to be edited as follows:
+
+RUN [ -e /etc/yum.conf ] && sed -i '/tsflags=nodocs/d' /etc/yum.conf || true
+RUN yum -y reinstall "*"
+RUN yum -y install <package>
+Squashing Layers
+Each instruction you create in your Dockerfile results in a new image layer being created. Each layer brings additional data that are not always part of the resulting image. For example, if you add a file in one layer, but remove it in another layer later, the final image’s size will include the added file size in a form of a special "whiteout" file although you removed it. In addition, every layer contains separate metadata that add up to the overall image size as well. So what are the benefits of squashing?
+
+Performance - Since all layers are copy-on-write file systems, it will take longer to build the final container from many layers. Squashing helps reduce the build time.
+
+Image size - Similarly, since an image is actually a collection of other images, the final image size is the sum of the sizes of component images. With squashing, you can prevent these unwanted size additions.
+
+Organization - Squashing also helps you control the structure of an image, reduce the number of layers and organize images logically.
+
+However, Docker does not yet support squashing natively, so you will have to work around it by using alternative approaches, some of which are listed below.
+
+Experimental --squash Flag
+As of version 1.13, Docker supports the --squash flag that enabled the squashing functionality. This is currently only available in experimental mode.
+
+docker save
+You can use docker save to squash all the layers of your image into a single layer. The save command was intended for this use, so this happens to be a side effect of the process. This approach, however, is not very practical for sharing as the user will be able to only download the whole content and cannot take advantage the caching. Note that the base image layer will be included as well and might be several hundreds of megabytes in size.
+
+Custom Tools
+You will surely find a lot of utilities on the internet that facilitate layer squashing. We recommend taking advantage of Marek Goldmann’s docker-squash, which automates layer squashing, is kept up-to-date and has been tested by the community.
+
+Repercussions of Squashing
+When you squash an image, you will lose the history together with the metadata accompanying the layers.
+
+Without the metadata, users building an image from a layered image that has been squashed are losing the idea that it happened.
+
+Similarly, if you decide to include the parent layer from which your image is built into the resulting squashed image, you ultimately prevent others from seeing that this happened.
+
+Look at the mongodb example:
+
+# docker images openshift/mongodb-24-centos7
+REPOSITORY                               TAG                 IMAGE ID            CREATED             VIRTUAL SIZE
+docker.io/openshift/mongodb-24-centos7   latest              d7c0c18b0ae4        16 hours ago        593.3 MB
+Without squashing, you can see the complete history and how each of the layers occupies space.
+
+# docker history docker.io/openshift/mongodb-24-centos7:latest
+IMAGE               CREATED             CREATED BY                                      SIZE                COMMENT
+d7c0c18b0ae4        About an hour ago   /bin/sh -c #(nop) CMD ["run-mongod"]            0 B
+63e2ba112add        About an hour ago   /bin/sh -c #(nop) ENTRYPOINT &{["container-en   0 B
+ca996db9c281        About an hour ago   /bin/sh -c #(nop) USER [184]                    0 B
+8593b9473058        About an hour ago   /bin/sh -c #(nop) VOLUME [/var/lib/mongodb/da   0 B
+5eca88b7872d        About an hour ago   /bin/sh -c touch /etc/mongod.conf && chown mo   0 B
+9439db8f40ad        About an hour ago   /bin/sh -c #(nop) ADD dir:f38635e83f0e6943cd3   17.29 kB
+12c60945cbac        About an hour ago   /bin/sh -c #(nop) ENV BASH_ENV=/usr/share/con   0 B
+e6073f9a949f        About an hour ago   /bin/sh -c #(nop) ENV CONTAINER_SCRIPTS_PATH=   0 B
+619bf2ae5ed8        About an hour ago   /bin/sh -c yum install -y centos-release-scl    342.6 MB
+ab5deeccfe21        About an hour ago   /bin/sh -c #(nop) EXPOSE 27017/tcp              0 B
+584ded9dcbca        About an hour ago   /bin/sh -c #(nop) LABEL io.k8s.description=Mo   0 B
+17e3bcd28e07        About an hour ago   /bin/sh -c #(nop) ENV MONGODB_VERSION=2.6 HOM   0 B
+807a1e9c5a7b        16 hours ago        /bin/sh -c #(nop) MAINTAINER SoftwareCollecti   0 B
+28e524afdd05        10 days ago         /bin/sh -c #(nop) CMD ["/bin/bash"]             0 B
+044c0f15c4d9        10 days ago         /bin/sh -c #(nop) LABEL name=CentOS Base Imag   0 B
+2ebc6e0c744d        10 days ago         /bin/sh -c #(nop) ADD file:6dd89087d4d418ca0c   196.7 MB
+fa5be2806d4c        7 months ago        /bin/sh -c #(nop) MAINTAINER The CentOS Proje   0 B
+See how the history and size changes after squashing all layers in a single one (using the script above):
+
+# docker history docker.io/openshift/mongodb-24-centos7:squashed
+IMAGE               CREATED             CREATED BY          SIZE                COMMENT
+90036ed9bd1d        58 minutes ago                          522.1 MB
+One of the biggest benefits of using layers is the posibility to reuse them. Images are usually squashed into a single big layer, which does not allow for pushing partial updates in individual layers; instead, the whole image needs to be pushed into the registry upon a change. The same applies to pulling the image from the registry.
+
+Some users might rely on suqashing when it comes to sensitive data. Be cautios because squashing is not meant to "hide" content. Even though squashing removes intermediate layers from the final image, information about secrets used in those layers will stay in the build cache.
+
+Labels
+Labels in Dockerfiles serve as a useful way to organize and document metadata used to describe an image. Some labels are only descriptive by nature, like name whereas others, like RUN can be used to describe action-oriented metadata. Labels are often leveraged by applications, like atomic or OpenShift, to help the image run as the author intended. Labels are primarily intended for descriptive purposes and can be viewed manually with the docker inspect <image_name> command.
+
+When are Labels Required?
+Labels are never required per se unless your build system or lifecycle management process requires them. However, the use of labels is highly recommended for a number of reasons:
+
+As mentioned above, many container related tools can use the label metadata in meaningful ways often contributing to a better user experience.
+
+The label metadata is always visible when inspecting the image. Therein, users can at least see the metadata even if their tooling does not make specific use of it. For example, the RUN label basically documents how you, as the author of the Dockerfile, expect this image to be run.
+
+Descriptive Labels
+The descriptive labels usually are alpha-numeric strings used to describe some aspect of the image itself. Examples, might be the version and release labels which could theoretically just be integer based. The following table describes labels that are meant to be purely descriptive in nature.
+
+Table 2. Descriptive labels
+Label	Description	Example
+changelog-url
+
+URL of a page containing release notes for the image

@@ -1,0 +1,121 @@
+---
+# vim: set ft=ansible:
+#
+#   This role verifies the atomic installation functionality through
+#   the installation of cockpit container.  The cockpit container will
+#   create a file /etc/pam.d/cockpit  when installed and will
+#   remove the file when uninstalled.  This criteria will be used to
+#   validate the install/uninstall.
+#
+#   Commands tested:
+#   - atomic install
+#   - atomic run
+#   - atomic uninstall
+#
+- name: Set cockpit container name for RHELAH
+  when: ansible_distribution == "RedHat"
+  set_fact:
+    cockpit_cname: "registry.access.redhat.com/rhel7/cockpit-ws"
+
+- name: Set cockpit container name for Fedora/CentOS
+  when: "'CentOS' in ansible_distribution or ansible_distribution == 'Fedora'"
+  set_fact:
+    cockpit_cname: "registry.fedoraproject.org/f27/cockpit"
+
+- name: Install cockpit container with tag
+  command: "atomic install {{ cockpit_cname }}:latest"
+  register: aic
+  retries: 5
+  delay: 60
+  until: aic|success
+
+- name: Check for /etc/pam.d/cockpit
+  stat:
+    path: /etc/pam.d/cockpit
+  register: install_file
+
+- name: Fail if /etc/pam.d/cockpit file is not found
+  when: install_file.stat.exists == False
+  fail:
+    msg: "Cockpit installation failed"
+
+- name: Run cockpit container with tag
+  command: "atomic run {{ cockpit_cname }}:latest"
+
+- name: Verify port 9090 is open
+  wait_for:
+    port: 9090
+    timeout: 30
+
+- name: Verify cockpit webpage is up
+  shell: curl -k "https://localhost:9090" | grep "Log in"
+
+- name: Get cockpit container ID
+  command: docker ps -q
+  register: cockpit_cid
+
+- name: Stop the cockpit container
+  command: "atomic stop {{ cockpit_cid.stdout }}"
+
+- name: Delete the cockpit container
+  command: atomic --assumeyes containers delete {{ cockpit_cid.stdout }}
+
+- name: Uninstall cockpit container
+  shell: atomic uninstall {{ cockpit_cname }}
+
+- name: Check for /etc/pam.d/cockpit file
+  stat:
+    path: /etc/pam.d/cockpit
+  register: uninstall_file
+
+- name: Fail if /etc/pam.d/cockpit file is found
+  when: uninstall_file.stat.exists == True
+  fail:
+    msg: "Cockpit uninstall failed"
+
+- name: Install cockpit container without tag
+  command: atomic install {{ cockpit_cname }}
+
+- name: Check for /etc/pam.d/cockpit
+  stat:
+    path: /etc/pam.d/cockpit
+  register: install_file
+
+- name: Fail if /etc/pam.d/cockpit file is not found
+  when: install_file.stat.exists == False
+  fail:
+    msg: "Cockpit installation failed"
+
+- name: Run cockpit container without tag
+  command: "atomic run {{ cockpit_cname }}"
+
+- name: Verify port 9090 is open
+  wait_for:
+    port: 9090
+    timeout: 30
+
+- name: Verify cockpit webpage is up
+  shell: curl -k "https://localhost:9090" | grep "Log in"
+
+- name: Get cockpit container ID
+  command: docker ps -q
+  register: cockpit_cid
+
+- name: Stop the cockpit container
+  command: "atomic stop {{ cockpit_cid.stdout }}"
+
+- name: Delete container
+  command: atomic --assumeyes containers delete {{ cockpit_cid.stdout }}
+
+- name: Uninstall cockpit container without tag
+  shell: atomic uninstall {{ cockpit_cname }}
+
+- name: Check for /etc/pam.d/cockpit file
+  stat:
+    path: /etc/pam.d/cockpit
+  register: uninstall_file
+
+- name: Fail if /etc/pam.d/cockpit file is found
+  when: uninstall_file.stat.exists == True
+  fail:
+    msg: "Cockpit uninstall failed"

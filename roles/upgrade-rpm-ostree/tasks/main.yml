@@ -1,0 +1,11 @@
+---
+# vim: set ft=ansible:
+
+# use --upgrade-unchanged-exit-77 to also force a fail when
+# no upgrade is performed (we always expect an upgrade)
+- name: Perform the upgrade
+  command: rpm-ostree upgrade --upgrade-unchanged-exit-77
+  register: upgrade
+  retries: 5
+  delay: 60
+  until: upgrade|success

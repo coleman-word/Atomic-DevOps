@@ -1,0 +1,33 @@
+---
+# vim: set ft=ansible:
+#
+- name: Include distribution vars
+  include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ ansible_distribution|lower }}-{{ ansible_distribution_version }}.yml"
+    - "{{ ansible_distribution|lower }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_distribution|lower }}.yml"
+
+- name: Fail if required variables are not defined
+  when: driver is undefined
+  fail:
+    msg: "The required variables are not defined.  Check files under roles/docker_storage_verify/vars"
+
+  # When all the streams are on docker 1.13, we should start using
+  #  docker info --format  '{{.Driver}}'
+- name: Check Docker storage driver
+  shell: "docker info | grep -oP '(?<=Storage Driver: ).*'"
+  register: storage_driver
+  failed_when: storage_driver.stdout != driver
+
+- name: Check for F26 Docker mount
+  when:
+    - ansible_distribution == 'Fedora'
+    - ansible_distribution_major_version == '26'
+  command: findmnt /var/lib/docker
+
+- name: Check for Fedora Rawhide Docker mount
+  when:
+    - ansible_distribution == 'Fedora'
+    - ansible_distribution_major_version > '26'
+  command: findmnt /var/lib/docker/containers

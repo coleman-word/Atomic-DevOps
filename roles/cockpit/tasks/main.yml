@@ -1,0 +1,8 @@
+---
+- name: Cockpit service
+  hosts: all
+  become: yes
+  tasks:
+    - name: Starts Cockpit Container
+      command: /usr/bin/atomic run cockpit/ws
+...

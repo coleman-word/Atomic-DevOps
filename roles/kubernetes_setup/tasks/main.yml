@@ -1,0 +1,151 @@
+---
+# vim: set ft=ansible:
+#
+# This role sets up kubernetes apiserver, controller-mgr, and scheduler pods.
+# It requires that the `kubernetes_set_fact` role be run before it can be
+# successfully used.
+#
+- name: Fail if kube_system_containers is not defined
+  when: kube_system_containers is not defined
+  fail:
+    msg: |
+      This role requires that the `kubernetes_set_fact` role is run
+      before it can be used.
+
+- when: kube_system_containers
+  block:
+    - name: Pull k8s and etcd images from the registry
+      command: "atomic pull --storage ostree {{ item }}"
+      register: atomic_pull
+      retries: 6
+      delay: 10
+      until: atomic_pull|success
+      with_items:
+        - "{{ kube_apiserver }}"
+        - "{{ kube_controller_manager }}"
+        - "{{ kube_scheduler }}"
+        - "{{ kube_kubelet }}"
+        - "{{ kube_proxy }}"
+        - "{{ etcd }}"
+
+    - name: Install etcd + k8s system containers
+      command: "atomic install --system --system-package=no {{ item }}"
+      with_items:
+        - "--name etcd {{ etcd }}"
+        - "--name kube-apiserver {{ kube_apiserver }}"
+        - "--name kube-controller-manager {{ kube_controller_manager }}"
+        - "--name kube-scheduler {{ kube_scheduler }}"
+        - "--name kubelet {{ kube_kubelet }}"
+        - "--name kube-proxy {{ kube_proxy }}"
+
+    # Work around https://bugzilla.redhat.com/show_bug.cgi?id=1544175
+    - name: Add the necessary line for the kubelet to start
+      lineinfile:
+        dest: /etc/tmpfiles.d/kubelet.conf
+        regexp: "^d   /var/lib/kubelet.*"
+        line: "d   /var/lib/kubelet - - - - -"
+      register: kubelet
+
+    - when: kubelet|changed
+      name: Re-create tmpfiles
+      command: systemd-tmpfiles --create /etc/tmpfiles.d/kubelet.conf
+
+    # Start etcd a little early to allow it to get setup + ready
+    - name: Start etcd
+      service:
+        name: 'etcd'
+        state: 'started'
+        enabled: true
+
+    - name: Edit /etc/kubernetes/apiserver
+      replace:
+        dest: "/etc/kubernetes/apiserver"
+        regexp: "^KUBE_ADMISSION_CONTROL=.*$"
+        replace: 'KUBE_ADMISSION_CONTROL="--admission-control=NamespaceLifecycle,NamespaceExists,LimitRanger,SecurityContextDeny,ResourceQuota"'
+
+    # Start apiserver to get it primed
+    - name: Start apiserver
+      service:
+        name: 'kube-apiserver'
+        state: 'started'
+        enabled: true
+
+    - name: Copy kubelet.kubeconfig file
+      copy:
+        src: roles/kubernetes_setup/files/kubelet.kubeconfig
+        dest: "{{ kubeconfig_path }}"
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: Add args to /etc/kubernetes/kubelet
+      lineinfile:
+        dest: /etc/kubernetes/kubelet
+        backup: true
+        backrefs: true
+        regexp: '(^KUBELET_ARGS=\".*)\"\s*$'
+        line: '\1 --kubeconfig={{ kubeconfig_path }} --register-node=true"'
+
+    # Start the rest of the services
+    - name: Start kubernetes services
+      service:
+        name: "{{ item }}"
+        state: "started"
+        enabled: true
+      with_items:
+        - "kubelet"
+        - "kube-proxy"
+        - "kube-controller-manager"
+        - "kube-scheduler"
+
+- when: not kube_system_containers
+  block:
+    - name: pull kubernetes api-server, controller-mgr, scheduler
+      command: docker pull {{ item }}
+      register: docker_pull
+      retries: 6
+      delay: 10
+      until: docker_pull|success
+      with_items:
+        - "{{ kube_apiserver }}"
+        - "{{ kube_controller_manager }}"
+        - "{{ kube_scheduler }}"
+
+    - name: make db directory
+      file:
+        path: /etc/kubernetes/manifests
+        state: directory
+        mode: 0755
+
+    - name: template out apiserver, controller-manager, and scheduler pods
+      template:
+        src: roles/kubernetes_setup/files/{{ item }}.j2
+        dest: /etc/kubernetes/manifests/{{ item }}.json
+        owner: root
+        group: root
+        mode: 0644
+      with_items:
+        - apiserver-pod
+        - controller-mgr-pod
+        - scheduler-pod
+
+    - name: add kubelet args
+      lineinfile:
+        dest: /etc/kubernetes/kubelet
+        backup: true
+        backrefs: true
+        regexp: '(^KUBELET_ARGS=\".*)\"\s*$'
+        line: '\1 --register-node=true --pod-manifest-path=/etc/kubernetes/manifests/"'
+
+    - name: start etcd, kube-proxy, kubelet
+      service:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+      with_items:
+        - etcd
+        - kubelet
+        - kube-proxy
+
+- name: test etcd
+  command: curl http://localhost:2379/version

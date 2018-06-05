@@ -1,0 +1,89 @@
+DOCUMENTATION = '''
+---
+module: grafana_dashboard
+author:
+  - Thierry Sallé (@tsalle)
+version_added: "2.5"
+short_description: Manage Grafana dashboards
+description:
+  - Create, update, delete, export Grafana dashboards via API.
+options:
+  grafana_url:
+    description:
+      - The Grafana URL.
+    required: true
+  grafana_user:
+    description:
+      - The Grafana API user.
+    default: admin
+  grafana_password:
+    description:
+      - The Grafana API password.
+    default: admin
+  grafana_api_key:
+    description:
+      - The Grafana API key.
+      - If set, I(grafana_user) and I(grafana_password) will be ignored.
+  org_id:
+    description:
+      - The Grafana Organisation ID where the dashboard will be imported / exported.
+      - Not used when I(grafana_api_key) is set, because the grafana_api_key only belongs to one organisation..
+    default: 1
+  state:
+    description:
+      - State of the dashboard.
+    required: true
+    choices: [ absent, export, present ]
+    default: present
+  slug:
+    description:
+      - slug of the dashboard. It's the friendly url name of the dashboard.
+      - When C(state) is C(present), this parameter can override the slug in the meta section of the json file.
+      - If you want to import a json dashboard exported directly from the interface (not from the api),
+        you have to specify the slug parameter because there is no meta section in the exported json.
+  path:
+    description:
+      - The path to the json file containing the Grafana dashboard to import or export.
+  overwrite:
+    description:
+      - Override existing dashboard when state is present.
+    type: bool
+    default: 'no'
+  message:
+    description:
+      - Set a commit message for the version history.
+      - Only used when C(state) is C(present).
+  validate_certs:
+    description:
+      - If C(no), SSL certificates will not be validated.
+      - This should only be used on personally controlled sites using self-signed certificates.
+    type: bool
+    default: 'yes'
+'''
+
+EXAMPLES = '''
+- name: Import Grafana dashboard foo
+  grafana_dashboard:
+    grafana_url: http://grafana.company.com
+    grafana_api_key: XXXXXXXXXXXX
+    state: present
+    message: Updated by ansible
+    overwrite: yes
+    path: /path/to/dashboards/foo.json
+- name: Export dashboard
+  grafana_dashboard:
+    grafana_url: http://grafana.company.com
+    grafana_api_key: XXXXXXXXXXXX
+    state: export
+    slug: foo
+    path: /path/to/dashboards/foo.json
+'''
+
+RETURN = '''
+---
+slug:
+  description: slug of the created / deleted / exported dashboard.
+  returned: success
+  type: string
+  sample: foo
+'''

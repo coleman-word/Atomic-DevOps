@@ -1,0 +1,40 @@
+---
+# vim: set ft=ansible:
+# role: rpm_ostree_install
+#
+# This role installs packages using rpm-ostree install
+#
+# Parameters:
+#  roi_packages - string of one or more packages separated by a space
+#  roi_reboot - boolean - pass -r flag to install command
+#
+- name: Fail if no packages specified
+  when: roi_packages is undefined
+  fail:
+    msg: "No packages specified"
+
+- name: Fail if reboot is undefined
+  when: roi_reboot is undefined
+  fail:
+    msg: "Reboot is not defined"
+
+- name: Install {{ roi_packages }} and no reboot
+  when: not roi_reboot
+  command: rpm-ostree install {{ roi_packages }}
+  register: install
+  retries: 5
+  delay: 60
+  until: install|success
+
+- name: Install {{ roi_packages }} and reboot
+  when: roi_reboot
+  command: rpm-ostree install {{ roi_packages }} -r
+  async: 60
+  poll: 0
+  ignore_errors: true
+
+- import_role:
+    name: reboot
+  vars:
+    skip_shutdown: true # shutdown was already initiated
+  when: roi_reboot

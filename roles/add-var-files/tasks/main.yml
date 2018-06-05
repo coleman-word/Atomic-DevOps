@@ -1,0 +1,33 @@
+---
+# vim: set ft=ansible:
+#
+- name: Check for presence of container_file_t type
+  command: seinfo --type=container_file_t
+  register: seinfo
+  ignore_errors: True
+
+- name: Set SELinux type to be used
+  set_fact:
+    selinux_type: '{{ "container_file_t" if seinfo.rc == 0 else "svirt_sandbox_file_t" }}'
+
+- name: Fail if vaf_filename is not defined
+  when: vaf_filename is undefined
+  fail:
+    msg: "vaf_filename is undefined"
+
+- name: Fail if vaf_dirname is not defined
+  when: vaf_dirname is undefined
+  fail:
+    msg: "vaf_dirname is undefined"
+
+- name: Make directory in /var
+  file:
+    path: "/var/{{ vaf_dirname }}"
+    state: directory
+    mode: 0755
+    setype: "{{ selinux_type }}"
+
+- name: Add file in new directory
+  shell: "echo $(sha256sum /etc/passwd) > {{ vaf_filename | quote }}"
+  args:
+    chdir: "/var/{{ vaf_dirname }}"

@@ -1,0 +1,7 @@
+---
+# vim: set ft=ansible:
+#
+popular_images:
+  - alpine
+  - busybox
+  - ubuntu

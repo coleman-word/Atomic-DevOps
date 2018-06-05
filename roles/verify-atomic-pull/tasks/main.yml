@@ -1,0 +1,28 @@
+---
+# vim: set ft=ansible:
+#
+#   This role verifies the atomic pull, run, and stop commands.  The validation
+#   of the atomic commands is done against docker.
+#
+#   Commands:
+#   - atomic pull
+#   - atomic run
+#   - atomic stop
+#
+- name: Pull busybox
+  command: atomic pull busybox
+  register: apb
+  retries: 5
+  delay: 60
+  until: apb|success
+
+- name: Get atomic images
+  command: atomic images list
+  register: aio
+
+- name: Fail if busybox is not in atomic images output
+  when: "'busybox' not in aio.stdout"
+  fail:
+    msg: |
+      Expected: busybox is not in atomic images output
+      Actual: {{ aio.stdout }}

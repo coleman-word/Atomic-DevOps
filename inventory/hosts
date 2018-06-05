@@ -1,0 +1,42 @@
+[all]
+kubernetes-gothereum-master0 ansible_host=10.250.193.80 ansible_ssh_user="fedora" ansible_ssh_private_key_file=~/.ssh/authorized_keys
+kubernetes-gothereum-master1 ansible_host=10.250.219.51 ansible_ssh_user="fedora" ansible_ssh_private_key_file=~/.ssh/authorized_keys
+kubernetes-gothereum-master2 ansible_host=10.250.193.73 ansible_ssh_user="fedora" ansible_ssh_private_key_file=~/.ssh/authorized_keys
+kubernetes-gothereum-worker1 ansible_host=10.250.215.73 ansible_ssh_user="fedora" ansible_ssh_private_key_file=~/.ssh/authorized_keys
+kubernetes-gothereum-worker0 ansible_host=10.250.194.17 ansible_ssh_user="fedora" ansible_ssh_private_key_file=~/.ssh/authorized_keys
+kubernetes-gothereum-worker2 ansible_host=10.250.203.68 ansible_ssh_user="fedora" ansible_ssh_private_key_file=~/.ssh/authorized_keys
+kubernetes-gothereum-worker3 ansible_host=10.250.211.36 ansible_ssh_user="fedora" ansible_ssh_private_key_file=~/.ssh/authorized_keys
+kubernetes-gothereum-etcd0 ansible_host=10.250.198.127 ansible_ssh_user="fedora" ansible_ssh_private_key_file=~/.ssh/authorized_keys
+kubernetes-gothereum-etcd1 ansible_host=10.250.216.155 ansible_ssh_user="fedora" ansible_ssh_private_key_file=~/.ssh/authorized_keys
+kubernetes-gothereum-etcd2 ansible_host=10.250.203.76 ansible_ssh_user="fedora" ansible_ssh_private_key_file=~/.ssh/authorized_keys
+
+
+bastion ansible_host=34.229.153.207
+bastion ansible_host=54.91.21.87
+
+[kube-master]
+kubernetes-gothereum-master0
+kubernetes-gothereum-master1
+kubernetes-gothereum-master2
+
+
+[kube-node]
+kubernetes-gothereum-worker0
+kubernetes-gothereum-worker1
+kubernetes-gothereum-worker2
+kubernetes-gothereum-worker3
+
+
+[etcd]
+kubernetes-gothereum-etcd0
+kubernetes-gothereum-etcd1
+kubernetes-gothereum-etcd2
+
+
+[k8s-cluster:children]
+kube-node
+kube-master
+
+
+[k8s-cluster:vars]
+apiserver_loadbalancer_domain_name="kubernetes-elb-gothereum-1903290742.us-east-1.elb.amazonaws.com"

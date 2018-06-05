@@ -1,0 +1,40 @@
+---
+# vim: set ft=ansible:
+#
+#  This role validates rpm-ostree status output.
+#
+#  Parameters:
+#   deployment (int) REQUIRED - index of deployment to verify
+#   expected (dict) REQUIRED - a dict of expected key/value pairs
+#   num_deployments (int) OPTIONAL - the number of deployments in output
+#
+- name: Fail if deployment or expected is undefined
+  when: expected is undefined or
+        deployment is undefined
+  fail:
+    msg: "deployment or expected is undefined"
+
+- name: Verify number of deployments
+  when:
+    - num_deployments is defined
+    - num_deployments | int != ros_num_deployments | int
+  fail:
+    msg: |
+      "Number of deployments is incorrect.
+       Expected: {{ num_deployments }}
+       Actual {{ ros_num_deployments }}"
+
+- name: Fail if deployment does not exist
+  when: ros_json['deployments'][deployment] is undefined
+  fail:
+    msg: "deployment {{ deployment }} does not exist"
+
+- name:  Fail if deployment {{ deployment }} values are incorrect
+  when: ros_json['deployments'][deployment][item.key] is undefined or
+        ros_json['deployments'][deployment][item.key] != item.value
+  fail:
+    msg: |
+      "'{{ item.key }}' is incorrect or does not exist.
+       Expected: {{ item.key }} == {{ item.value }}
+       Actual: {{ item.key }} == {{ ros_json['deployments'][deployment][item.key] }}"
+  with_dict: "{{ expected }}"

@@ -1,0 +1,21 @@
+--- # roles/gothereum/tasks/main.yml
+- name: Start docker
+  service:
+    name: docker
+    state: started
+
+- name: Pull gothereum image
+  docker_image:
+    name: ethereum/client-go
+
+- name: (Re)start gothereum container
+  docker_container:
+   name: gothereum
+   image: ethereum/client-go
+   state: started
+   restart: yes
+   ports:
+   - '8545'
+   - '8546'
+   - '30303'
+   - '30303/udp'

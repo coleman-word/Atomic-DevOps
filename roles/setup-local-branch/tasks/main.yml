@@ -1,0 +1,26 @@
+---
+# vim: set ft=ansible:
+#
+# This role sets up local branch of the booted deployment
+#
+- name: Fail if branch_name is undefined
+  when: branch_name is undefined
+  fail:
+    msg: "branch_name is undefined"
+
+# This role provides the following variables:
+#  - ros: result of 'rpm-ostree status --json'
+#  - ros_json: ros.stdout piped through the from_json filter
+#  - ros_num_deployments:  number of deployments on host
+#  - ros_booted: JSON object of the booted deployment
+#  - ros_not_booted: JSON object of the not booted deployment
+- name: Get rpm-ostree status output
+  import_role:
+    name: rpm_ostree_status
+
+- name: Save current booted checksum
+  set_fact:
+    lbs_checksum: "{{ ros_booted['checksum'] }}"
+
+- name: Create local branch
+  command: ostree refs --create {{ branch_name }} {{ lbs_checksum }}

@@ -1,0 +1,6 @@
+---
+# vim: set ft=ansible:
+#
+dependencies:
+  - role: set-fact-booted-deployment
+    archive: false

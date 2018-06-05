@@ -1,0 +1,56 @@
+DOCUMENTATION = """
+---
+module: etcd3
+short_description: "Set or delete key value pairs from an etcd3 cluster"
+version_added: "2.5"
+requirements:
+  - etcd3
+description:
+   - Sets or deletes values in etcd3 cluster using its v3 api.
+   - Needs python etcd3 lib to work
+options:
+    key:
+        description:
+            - the key where the information is stored in the cluster
+        required: true
+    value:
+        description:
+            - the information stored
+        required: true
+    host:
+        description:
+            - the IP address of the cluster
+        default: 'localhost'
+    port:
+        description:
+            - the port number used to connect to the cluster
+        default: 2379
+    state:
+        description:
+            - the state of the value for the key.
+            - can be present or absent
+        required: true
+author:
+    - Jean-Philippe Evrard (@evrardjp)
+"""
+
+EXAMPLES = """
+# Store a value "bar" under the key "foo" for a cluster located "http://localhost:2379"
+- etcd3:
+    key: "foo"
+    value: "baz3"
+    host: "localhost"
+    port: 2379
+    state: "present"
+"""
+
+RETURN = '''
+key:
+    description: The key that was queried
+    returned: always
+    type: str
+old_value:
+    description: The previous value in the cluster
+    returned: always
+    type: str
+'''
