@@ -10,7 +10,7 @@ _Work in Progress_
 
 I normally use Hashistack's Terraform and Packer with either Google Cloud Platform(Kubernetes Engine, Compute Engine, Functioins) OR Amazon Web Services(Elastic Compute, Elastic Container, Cloud Formation, Lambda) with the standard virtual private cloud networking. 
 
-This challenge was a learning lesson for me since I normally would have connected my repo via either cloud repositorise API and then used serverless functions to automate deployments based on event triggers. 
+This challenge was a learning lesson for me since I normally would have connected my repo via either cloud repositorise API and then used jenkins and serverless functions to automate deployments based on triggers. 
 
 I'm still getting used to Ansible, and should have a good handle on it within the next few weeks, but I thought you should know that this was the first time I've used it with Atomic Hosts and AWS.
 
